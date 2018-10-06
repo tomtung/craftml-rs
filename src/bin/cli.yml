@@ -1,0 +1,90 @@
+name: craftml
+about: Clusering-based RAndom Forest of predictive Trees for extreme Multi-label Learning
+
+subcommands:
+- train:
+    about: Train a new CRAFTML model
+    args:
+    - training_data:
+        help: Path to training dataset file (in the format of the Extreme Classification Repository)
+        index: 1
+        required: true
+    - test_data:
+        help: Path to test dataset file used to calculate metrics if provided (in the format of the Extreme Classification Repository)
+        long: test_data
+        takes_value: true
+        value_name: PATH
+        required_unless: model_path
+    - model_path:
+        help: Path to which the trained model will be saved if provided
+        long: model_path
+        takes_value: true
+        value_name: PATH
+        required_unless: test_data
+    - n_threads:
+        help: Number of worker threads. If 0, the number is selected automatically.
+        long: n_threads
+        takes_value: true
+        default_value: "0"
+    - n_trees:
+        help: Number of trees in the random forest
+        long: n_trees
+        takes_value: true
+        default_value: "50"
+    - n_feature_buckets:
+        help: Number of buckets into which features are hashed
+        long: n_feature_buckets
+        takes_value: true
+        default_value: "10000"
+    - n_label_buckets:
+        help: Number of buckets into which labels are hashed
+        long: n_label_buckets
+        takes_value: true
+        default_value: "10000"
+    - leaf_max_size:
+        help: Maximum number of distinct examples on a leaf node
+        long: leaf_max_size
+        takes_value: true
+        default_value: "10"
+    - k_clusters:
+        help: Number of clusters on a branching node
+        long: k_clusters
+        takes_value: true
+        default_value: "10"
+    - cluster_sample_size:
+        help: Number of examples drawn for clustering on a branching node
+        long: cluster_sample_size
+        takes_value: true
+        default_value: "20000"
+    - n_cluster_iters:
+        help: Number of clustering iterations to run on each branching node
+        long: n_cluster_iters
+        takes_value: true
+        default_value: "2"
+- test:
+    about: Test an existing CRAFTML model
+    args:
+    - model_path:
+        help: Path to the trained model
+        index: 1
+        required: true
+    - test_data:
+        help: Path to test dataset file (in the format of the Extreme Classification Repository)
+        index: 2
+        required: true
+    - out_path:
+        help: Path to the which predictions will be written, if provided
+        long: out_path
+        takes_value: true
+        value_name: PATH
+    - n_threads:
+        help: Number of worker threads. If 0, the number is selected automatically.
+        long: n_threads
+        takes_value: true
+        default_value: "0"
+    - k_top:
+        help: Number of top predictions to write out for each test example
+        requires: out_path
+        long: k_top
+        takes_value: true
+        default_value: "5"

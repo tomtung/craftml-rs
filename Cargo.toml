@@ -1,0 +1,22 @@
+[package]
+name = "craftml"
+version = "0.0.1"
+authors = ["Tom Dong <tom.tung.dyb@gmail.com>"]
+
+[dependencies]
+fasthash = "0.3"
+itertools = "0.7"
+rand = {git = "https://github.com/rust-random/rand.git", rev = "fbd9ec3"}  # till 0.6
+serde = "1.0"
+serde_derive = "1.0"
+maplit = "1.0"
+time = "0.1"
+bincode = "1.0"
+log = "0.4"
+simple_logger = "0.5"
+pbr = "1.0"
+clap = {version = "2.32", features = ["yaml"]}
+rayon = "1.0"
+
+[profile.dev]
+opt-level = 3
