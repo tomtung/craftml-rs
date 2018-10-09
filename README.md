@@ -1,5 +1,21 @@
 # craftml-rs
-A Rust implementation of CRAFTML, an Efficient Clustering-based Random Forest for Extreme Multi-label Learning
+A Rust implementation of CRAFTML, an Efficient Clustering-based Random Forest for Extreme Multi-label Learning (Siblini et al., 2018).
+
+## Performance
+
+This implementation has been tested on datasets from the [Extreme Classification Repository](http://manikvarma.org/downloads/XC/XMLRepository.html). Precisions at 1, 3, and 5 are calculated for models trained with default hyper-parameters (e.g. to train the model for EURLex-4K we simply run `craftml train eurlex_train.txt --test_data eurlex_test.txt` without changing any settings).
+
+| Dataset | P@1 | P@3 | P@5 |
+| --- | --- | --- | --- |
+| Mediamill | 86.67 | 71.53 | 57.59 |
+| Bibtex | 62.39 | 37.93 | 27.41 |
+| Delicious | 69.02 | 63.37 | 58.66 |
+| EURLex-4K | 79.1 | 65.24 | 53.97 |
+| Wiki10-31K | 85.1 | 73.65 | 63.99 |
+
+These numbers are generally consistent with those reported in the original paper.
+
+_TODO(?): My PC doesn't have enough memory to train on the larger datasets._
 
 ## Build
 The project can be easily built with [Cargo](https://doc.rust-lang.org/cargo/getting-started/installation.html):
