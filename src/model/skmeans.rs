@@ -7,11 +7,7 @@ use rayon::prelude::*;
 use std::f32;
 
 /// Pick initial centroids for K-means clustering, using K-means++.
-fn pick_centroids<R: Rng>(
-    vectors: &[&SparseVector],
-    k: u32,
-    rng: &mut R,
-) -> (Vec<SparseVector>, Vec<usize>) {
+fn pick_centroids(vectors: &[&SparseVector], k: u32) -> (Vec<SparseVector>, Vec<usize>) {
     assert!(k > 0);
     assert!(!vectors.is_empty());
 
@@ -24,7 +20,7 @@ fn pick_centroids<R: Rng>(
             // Randomly pick the centroid using the weighted probability distribution
             let weights: Vec<_> = distances.iter().map(|d| d.powi(2)).collect();
             if let Ok(distribution) = WeightedIndex::new(weights) {
-                vectors[distribution.sample(rng)].clone()
+                vectors[distribution.sample(&mut thread_rng())].clone()
             } else {
                 // All weights are zero, break out of the loop
                 break;
@@ -122,13 +118,8 @@ fn skmeans_iterate(vectors: &[&SparseVector], partitions: &mut Vec<usize>) -> Ve
 }
 
 /// Run spherical K-means on a set of data points.
-pub fn skmeans<R: Rng>(
-    vectors: &[&SparseVector],
-    k: u32,
-    n_iter: u32,
-    rng: &mut R,
-) -> (Vec<SparseVector>, Vec<usize>) {
-    let (mut centroids, mut partitions) = pick_centroids(vectors, k, rng);
+pub fn skmeans(vectors: &[&SparseVector], k: u32, n_iter: u32) -> (Vec<SparseVector>, Vec<usize>) {
+    let (mut centroids, mut partitions) = pick_centroids(vectors, k);
     for _ in 0..n_iter {
         centroids = skmeans_iterate(vectors, &mut partitions);
     }
@@ -158,7 +149,7 @@ mod tests {
         ];
 
         // Run K-means++
-        let (centroids, partitions) = super::pick_centroids(&vector_refs, 3, &mut thread_rng());
+        let (centroids, partitions) = super::pick_centroids(&vector_refs, 3);
 
         // We should have 3 centroids
         assert_eq!(3, centroids.len());

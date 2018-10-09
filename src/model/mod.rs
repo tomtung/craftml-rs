@@ -6,7 +6,6 @@ use fasthash::murmur3::hash32_with_seed;
 use rand;
 use rand::prelude::*;
 use rayon::prelude::*;
-use std::cell::RefCell;
 use std::collections::{HashMap, HashSet};
 use std::io;
 use time;
@@ -116,7 +115,6 @@ impl CraftmlTrainer {
                     self.k_clusters,
                     self.cluster_sample_size,
                     self.n_cluster_iters,
-                    thread_rng(),
                 );
                 let tree = tree_trainer.train(dataset);
                 sender.send(1).unwrap();
@@ -173,17 +171,16 @@ impl TreeNode {
     }
 }
 
-struct TreeTrainer<R: Rng> {
+struct TreeTrainer {
     feature_projector: HashingTrickProjector,
     label_projector: HashingTrickProjector,
     leaf_max_size: usize,
     k_clusters: u32,
     cluster_sample_size: usize,
     n_cluster_iters: u32,
-    rng: RefCell<R>,
 }
 
-impl<R: Rng> TreeTrainer<R> {
+impl TreeTrainer {
     fn new(
         n_feature_buckets: u32,
         n_label_buckets: u32,
@@ -191,8 +188,8 @@ impl<R: Rng> TreeTrainer<R> {
         k_clusters: u32,
         cluster_sample_size: usize,
         n_cluster_iters: u32,
-        mut rng: R,
-    ) -> TreeTrainer<R> {
+    ) -> TreeTrainer {
+        let mut rng = thread_rng();
         let feature_projector = HashingTrickProjector {
             n_buckets: n_feature_buckets,
             index_hash_seed: rng.next_u32(),
@@ -210,7 +207,6 @@ impl<R: Rng> TreeTrainer<R> {
             k_clusters,
             cluster_sample_size,
             n_cluster_iters,
-            rng: RefCell::new(rng),
         }
     }
 
@@ -314,12 +310,8 @@ impl<R: Rng> TreeTrainer<R> {
         feature_vectors: &[&SparseVector],
         label_vectors: &[&SparseVector],
     ) -> Vec<SparseVector> {
-        let (_, partitions) = skmeans::skmeans(
-            label_vectors,
-            self.k_clusters,
-            self.n_cluster_iters,
-            &mut *self.rng.borrow_mut(),
-        );
+        let (_, partitions) =
+            skmeans::skmeans(label_vectors, self.k_clusters, self.n_cluster_iters);
         skmeans::compute_centroids_per_partition(feature_vectors, &partitions)
     }
 
@@ -333,7 +325,7 @@ impl<R: Rng> TreeTrainer<R> {
             self.train_node_classifier_unsampled(feature_vectors, label_vectors)
         } else {
             let sampled_indices = rand::seq::index::sample(
-                &mut *self.rng.borrow_mut(),
+                &mut thread_rng(),
                 feature_vectors.len(),
                 self.cluster_sample_size,
             );
