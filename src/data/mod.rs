@@ -92,7 +92,7 @@ impl DataSet {
 
         let mut features_per_example = Vec::new();
         let mut labels_per_example = Vec::new();
-        let mut pb = ProgressBar::new(n_examples.into());
+        let mut pb = ProgressBar::on(::std::io::stderr(), n_examples.into());
         for line in lines {
             let (feature_map, label_set) = Self::parse_xc_repo_data_line(&line?)?;
             features_per_example.push(feature_map);
