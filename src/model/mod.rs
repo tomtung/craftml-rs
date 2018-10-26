@@ -250,56 +250,51 @@ impl TreeTrainer {
             return Self::build_leaf(label_sets);
         }
 
-        let feature_centroids = self.train_node_classifier(feature_vectors, label_vectors);
-
-        // Partition data points based on the centroids
-        let data_per_child = {
+        // Compute centroids and assign partitions accordingly
+        let centroid_indices_pairs: Vec<(SparseVector, Vec<usize>)> = {
+            let feature_centroids = self.train_node_classifier(feature_vectors, label_vectors);
             let mut partitions = vec![0; feature_vectors.len()];
             skmeans::reassign_partitions(feature_vectors, &feature_centroids, &mut partitions);
 
-            let mut data_per_child = vec![
-                (
-                    Vec::<&SparseVector>::new(),
-                    Vec::<&SparseVector>::new(),
-                    Vec::<&HashSet<Label>>::new(),
-                );
-                feature_centroids.len()
-            ];
+            let mut indices_per_partition: Vec<Vec<usize>> =
+                vec![Vec::new(); feature_centroids.len()];
             for (i, &p) in partitions.iter().enumerate() {
-                data_per_child[p].0.push(feature_vectors[i]);
-                data_per_child[p].1.push(label_vectors[i]);
-                data_per_child[p].2.push(label_sets[i]);
+                let indices = &mut indices_per_partition[p];
+                indices.push(i);
             }
 
-            let n_non_empty_children = data_per_child
-                .iter()
-                .filter(|(v, _, _)| !v.is_empty())
-                .count();
-            assert!(n_non_empty_children > 0);
-            // If we only managed to find 1 centroid, also return leaf
-            if n_non_empty_children == 1 {
-                return Self::build_leaf(label_sets);
-            }
-
-            data_per_child
+            izip!(feature_centroids, indices_per_partition)
+                .filter(|(_, v)| !v.is_empty())
+                .collect()
         };
+        assert!(centroid_indices_pairs.len() > 0);
+
+        // If all examples are assigned to one centroid, also return leaf
+        if centroid_indices_pairs.len() == 1 {
+            let (_, indices) = &centroid_indices_pairs[0];
+            assert!(indices.len() == feature_vectors.len());
+            return Self::build_leaf(label_sets);
+        }
 
         // Train a sub-tree for each partition
-        let child_centroid_pairs = {
-            let mut child_centroid_pairs = Vec::new();
-            for (child_data, feature_centroid) in izip!(data_per_child, feature_centroids) {
-                if !child_data.0.is_empty() {
-                    assert!(child_data.0.len() < feature_vectors.len());
-                    child_centroid_pairs.push((
-                        self.train_subtree(&child_data.0, &child_data.1, &child_data.2),
-                        feature_centroid,
-                    ));
-                }
-            }
-            assert!(!child_centroid_pairs.is_empty());
-            child_centroid_pairs
-        };
-
+        let child_centroid_pairs = centroid_indices_pairs
+            .into_par_iter()
+            .map(|(centroid, indices)| {
+                (
+                    self.train_subtree(
+                        &indices
+                            .iter()
+                            .map(|&i| feature_vectors[i])
+                            .collect::<Vec<_>>(),
+                        &indices
+                            .iter()
+                            .map(|&i| label_vectors[i])
+                            .collect::<Vec<_>>(),
+                        &indices.iter().map(|&i| label_sets[i]).collect::<Vec<_>>(),
+                    ),
+                    centroid,
+                )
+            }).collect();
         TreeNode::BranchNode {
             child_centroid_pairs,
         }
