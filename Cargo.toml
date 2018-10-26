@@ -6,7 +6,7 @@ authors = ["Tom Dong <tom.tung.dyb@gmail.com>"]
 [dependencies]
 fasthash = "0.3"
 itertools = "0.7"
-rand = {git = "https://github.com/rust-random/rand.git", rev = "fbd9ec3"}  # till 0.6
+rand = "0.6.0-pre.0"
 serde = "1.0"
 serde_derive = "1.0"
 maplit = "1.0"
