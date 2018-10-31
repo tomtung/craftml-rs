@@ -68,8 +68,8 @@ impl CraftmlModel {
 #[derive(Debug)]
 pub struct CraftmlTrainer {
     pub n_trees: usize,
-    pub n_feature_buckets: u32,
-    pub n_label_buckets: u32,
+    pub n_feature_buckets: u16,
+    pub n_label_buckets: u16,
     pub leaf_max_size: usize,
     pub k_clusters: u32,
     pub cluster_sample_size: usize,
@@ -109,8 +109,8 @@ impl CraftmlTrainer {
             .into_par_iter()
             .map_with(sender, |sender, _| {
                 let tree_trainer = TreeTrainer::new(
-                    self.n_feature_buckets.min(dataset.n_features),
-                    self.n_label_buckets.min(dataset.n_labels),
+                    dataset.n_features.min(self.n_feature_buckets as u32) as u16,
+                    dataset.n_labels.min(self.n_label_buckets as u32) as u16,
                     self.leaf_max_size,
                     self.k_clusters,
                     self.cluster_sample_size,
@@ -182,8 +182,8 @@ struct TreeTrainer {
 
 impl TreeTrainer {
     fn new(
-        n_feature_buckets: u32,
-        n_label_buckets: u32,
+        n_feature_buckets: u16,
+        n_label_buckets: u16,
         leaf_max_size: usize,
         k_clusters: u32,
         cluster_sample_size: usize,
@@ -357,7 +357,7 @@ fn aggregate_label_sets(label_sets: &[&HashSet<Label>]) -> Vec<(Label, f32)> {
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
 struct HashingTrickProjector {
-    n_buckets: u32,
+    n_buckets: u16,
     index_hash_seed: u32,
     sign_hash_seed: u32,
 }
@@ -369,11 +369,12 @@ impl HashingTrickProjector {
         T: Iterator<Item = (&'a S, f32)>,
         S: AsRef<[u8]>,
     {
-        let mut index_to_value = HashMap::<u32, f32>::new();
+        let mut index_to_value = HashMap::<u16, f32>::new();
         for (feature, value) in index_value_pairs {
             let ref_v = {
-                let index = hash32_with_seed(&feature, self.index_hash_seed) % self.n_buckets;
-                index_to_value.entry(index as u32).or_insert(0.)
+                let index =
+                    hash32_with_seed(&feature, self.index_hash_seed) as u16 % self.n_buckets;
+                index_to_value.entry(index).or_insert(0.)
             };
             *ref_v += {
                 let sign = hash32_with_seed(&feature, self.sign_hash_seed) & 1 == 1;

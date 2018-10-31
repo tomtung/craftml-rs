@@ -6,19 +6,19 @@ use std::collections::HashMap;
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 pub struct SparseVector {
     /// A list of (index, value) pairs, sorted by index.
-    pub entries: Vec<(u32, f32)>,
+    pub entries: Vec<(u16, f32)>,
 }
 
-impl From<Vec<(u32, f32)>> for SparseVector {
-    fn from(sorted_index_value_pairs: Vec<(u32, f32)>) -> Self {
+impl From<Vec<(u16, f32)>> for SparseVector {
+    fn from(sorted_index_value_pairs: Vec<(u16, f32)>) -> Self {
         SparseVector {
             entries: sorted_index_value_pairs,
         }
     }
 }
 
-impl<S: std::hash::BuildHasher> From<HashMap<u32, f32, S>> for SparseVector {
-    fn from(index_to_value: HashMap<u32, f32, S>) -> Self {
+impl<S: std::hash::BuildHasher> From<HashMap<u16, f32, S>> for SparseVector {
+    fn from(index_to_value: HashMap<u16, f32, S>) -> Self {
         let mut index_value_pairs: Vec<_> = index_to_value.into_iter().collect();
         index_value_pairs.sort_unstable_by_key(|&(i, _)| i);
         SparseVector {
