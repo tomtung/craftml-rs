@@ -47,6 +47,7 @@ fn pick_centroids(vectors: &[&SparseVector], k: u32) -> (Vec<SparseVector>, Vec<
 pub fn compute_centroids_per_partition(
     vectors: &[&SparseVector],
     partitions: &[usize],
+    epsilon: f32,
 ) -> Vec<SparseVector> {
     debug_assert!(!vectors.is_empty());
     debug_assert!(partitions.len() == vectors.len());
@@ -70,7 +71,13 @@ pub fn compute_centroids_per_partition(
                     None
                 } else {
                     let vectors = indices.into_iter().map(|i| vectors[i]);
-                    Some(SparseVector::sum(vectors).into_l2_normalized())
+                    let mut sv = SparseVector::sum(vectors);
+                    sv.l2_normalize();
+                    if epsilon > 0. {
+                        sv.prune(epsilon);
+                        sv.l2_normalize();
+                    }
+                    Some(sv)
                 }
             }).collect()
     };
@@ -112,7 +119,7 @@ where
 
 /// Run 1 iteration of spherical K-means
 fn skmeans_iterate(vectors: &[&SparseVector], partitions: &mut Vec<usize>) -> Vec<SparseVector> {
-    let centroids = compute_centroids_per_partition(vectors, partitions);
+    let centroids = compute_centroids_per_partition(vectors, partitions, 0.);
     reassign_partitions(vectors, &centroids, partitions);
     centroids
 }
@@ -134,11 +141,15 @@ mod tests {
     #[test]
     fn test_pick_centroids() {
         // Set up trivial dummy data in which some data points have the same features
-        let vectors = [
-            SparseVector::from(vec![(1, 1.), (2, 2.)]).into_l2_normalized(),
-            SparseVector::from(vec![(11, 12.), (22, 23.)]).into_l2_normalized(),
-            SparseVector::from(vec![(111, 123.), (222, 234.)]).into_l2_normalized(),
+        let mut vectors = [
+            SparseVector::from(vec![(1, 1.), (2, 2.)]),
+            SparseVector::from(vec![(11, 12.), (22, 23.)]),
+            SparseVector::from(vec![(111, 123.), (222, 234.)]),
         ];
+        for v in vectors.iter_mut() {
+            v.l2_normalize();
+        }
+
         let vector_refs = [
             &vectors[0].clone(), // 0
             &vectors[1].clone(), // 1
@@ -224,18 +235,22 @@ mod tests {
                 ]),
                 SparseVector::from(vec![(3, 1.)]),
             ],
-            super::compute_centroids_per_partition(&vectors, &mut partitions)
+            super::compute_centroids_per_partition(&vectors, &mut partitions, 0.)
         );
     }
 
     #[test]
     fn test_reassign_partitions() {
-        let vectors = [
-            SparseVector::from(vec![(1, 1.), (2, 2.)]).into_l2_normalized(),
-            SparseVector::from(vec![(11, 12.), (22, 23.)]).into_l2_normalized(),
-            SparseVector::from(vec![(111, 123.), (222, 234.)]).into_l2_normalized(),
-            SparseVector::from(vec![(1111, 123.), (2222, 2345.)]).into_l2_normalized(),
+        let mut vectors = [
+            SparseVector::from(vec![(1, 1.), (2, 2.)]),
+            SparseVector::from(vec![(11, 12.), (22, 23.)]),
+            SparseVector::from(vec![(111, 123.), (222, 234.)]),
+            SparseVector::from(vec![(1111, 123.), (2222, 2345.)]),
         ];
+        for v in vectors.iter_mut() {
+            v.l2_normalize();
+        }
+
         let vector_refs = [
             &vectors[0].clone(), // 0
             &vectors[1].clone(), // 1

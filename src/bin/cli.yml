@@ -61,6 +61,11 @@ subcommands:
         long: n_cluster_iters
         takes_value: true
         default_value: "2"
+    - centroid_min_value:
+        help: The minimum value to keep in centroid vectors from clustering; smaller values are pruned.
+        long: centroid_min_value
+        takes_value: true
+        default_value: "0.01"
 - test:
     about: Test an existing CRAFTML model
     args:

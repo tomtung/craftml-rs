@@ -33,13 +33,14 @@ impl SparseVector {
     ///     # use craftml::data::SparseVector;
     ///     let mut v = SparseVector::from(
     ///         vec![(1, 1.), (5, 2.), (50, 4.), (100, 6.), (1000, 8.)]);
+    ///     v.l2_normalize();
     ///     assert_eq!(vec![
     ///         (1, 1. / 11.),
     ///         (5, 2. / 11.),
     ///         (50, 4. / 11.),
     ///         (100, 6. / 11.),
     ///         (1000, 8. / 11.),
-    ///     ], v.l2_normalize().entries);
+    ///     ], v.entries);
     ///
     /// If the vector is has length 0, it remains unchanged.
     ///
@@ -49,7 +50,7 @@ impl SparseVector {
     ///     v.l2_normalize();
     ///     assert_eq!(vec![(1, 0.), (5, 0.), (50, 0.), (100, 0.), (1000, 0.)], v.entries);
     ///
-    pub fn l2_normalize(&mut self) -> &mut Self {
+    pub fn l2_normalize(&mut self) {
         let mut length = 0f32;
         for (_, v) in &self.entries {
             length += v.powi(2);
@@ -62,33 +63,18 @@ impl SparseVector {
                 *entry = (i, v / length);
             }
         }
-
-        self
     }
 
-    /// Rescale the length of the vector to be 1.
+    /// Remove entries with values smaller than the given threshold.
     ///
     ///     # use craftml::data::SparseVector;
     ///     let mut v = SparseVector::from(
-    ///         vec![(1, 1.), (5, 2.), (50, 4.), (100, 6.), (1000, 8.)]);
-    ///     assert_eq!(vec![
-    ///         (1, 1. / 11.),
-    ///         (5, 2. / 11.),
-    ///         (50, 4. / 11.),
-    ///         (100, 6. / 11.),
-    ///         (1000, 8. / 11.),
-    ///     ], v.into_l2_normalized().entries);
+    ///         vec![(1, 0.0001), (5, 0.001), (50, 0.01), (100, 0.1)]);
+    ///     v.prune(0.01);
+    ///     assert_eq!(vec![(50, 0.01), (100, 0.1)], v.entries);
     ///
-    /// If the vector is has length 0, it remains unchanged.
-    ///
-    ///     # use craftml::data::SparseVector;
-    ///     let mut v = SparseVector::from(
-    ///         vec![(1, 0.), (5, 0.), (50, 0.), (100, 0.), (1000, 0.)]).into_l2_normalized();
-    ///     assert_eq!(vec![(1, 0.), (5, 0.), (50, 0.), (100, 0.), (1000, 0.)], v.entries);
-    ///
-    pub fn into_l2_normalized(mut self) -> Self {
-        self.l2_normalize();
-        self
+    pub fn prune(&mut self, epsilon: f32) {
+        self.entries.retain(|&(_, v)| v >= epsilon);
     }
 
     /// Compute the dot product with another sparse vector.
