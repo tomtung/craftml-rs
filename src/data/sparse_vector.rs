@@ -75,6 +75,7 @@ impl SparseVector {
     ///
     pub fn prune(&mut self, epsilon: f32) {
         self.entries.retain(|&(_, v)| v >= epsilon);
+        self.entries.shrink_to_fit();
     }
 
     /// Compute the dot product with another sparse vector.
