@@ -1,9 +1,11 @@
 extern crate std;
 
 use super::data::SparseVector;
+use order_stat::kth_by;
 use rand::distributions::WeightedIndex;
 use rand::prelude::*;
 use rayon::prelude::*;
+use std::collections::HashMap;
 use std::f32;
 
 /// Pick initial centroids for K-means clustering, using K-means++.
@@ -47,12 +49,53 @@ fn pick_centroids(vectors: &[&SparseVector], k: u32) -> (Vec<SparseVector>, Vec<
 pub fn compute_centroids_per_partition(
     vectors: &[&SparseVector],
     partitions: &[usize],
-    epsilon: f32,
+    centroid_preserve_ratio: f32,
+    centroid_min_n_preserve: usize,
 ) -> Vec<SparseVector> {
     debug_assert!(!vectors.is_empty());
     debug_assert!(partitions.len() == vectors.len());
 
     // Compute centroids for each partition
+    let compute_centroid = |indices: &Vec<usize>| {
+        if indices.is_empty() {
+            // NB: empty partitions are filtered out, therefore partition indices might
+            //     not match with centroids
+            return None;
+        }
+
+        // Sum up vectors with the given indices
+        let mut index_value_pairs: Vec<_> = {
+            let mut index_to_value = HashMap::new();
+            for &i in indices {
+                for &(index, value) in &vectors[i].entries {
+                    let ref_v = index_to_value.entry(index).or_insert(0.);
+                    *ref_v += value;
+                }
+            }
+            index_to_value.into_iter().collect()
+        };
+
+        // Prune smaller values if necessary
+        let n_preserve =
+            ((index_value_pairs.len() as f32 * centroid_preserve_ratio) as f32).ceil() as usize;
+        let n_preserve = n_preserve
+            .max(centroid_min_n_preserve)
+            .min(index_value_pairs.len());
+        assert!(index_value_pairs.is_empty() || n_preserve > 0);
+        if n_preserve < index_value_pairs.len() {
+            kth_by(&mut index_value_pairs, n_preserve - 1, |l, r| {
+                let (_, lv) = l;
+                let (_, rv) = r;
+                rv.partial_cmp(lv).unwrap()
+            });
+            index_value_pairs.truncate(n_preserve);
+        }
+
+        // Create centroid vector from the entries that are left
+        let mut sv = SparseVector::from(index_value_pairs);
+        sv.l2_normalize();
+        Some(sv)
+    };
     let centroids: Vec<_> = {
         let mut indices_per_partition: Vec<Vec<usize>> = Vec::new();
         for (i, &p) in partitions.iter().enumerate() {
@@ -63,23 +106,9 @@ pub fn compute_centroids_per_partition(
         }
 
         indices_per_partition
-            .into_iter()
-            .filter_map(|indices| {
-                if indices.is_empty() {
-                    // NB: empty partitions are filtered out, therefore partition indices might
-                    //     not match with centroids
-                    None
-                } else {
-                    let vectors = indices.into_iter().map(|i| vectors[i]);
-                    let mut sv = SparseVector::sum(vectors);
-                    sv.l2_normalize();
-                    if epsilon > 0. {
-                        sv.prune(epsilon);
-                        sv.l2_normalize();
-                    }
-                    Some(sv)
-                }
-            }).collect()
+            .iter()
+            .filter_map(compute_centroid)
+            .collect()
     };
     assert!(!centroids.is_empty());
 
@@ -119,7 +148,7 @@ where
 
 /// Run 1 iteration of spherical K-means
 fn skmeans_iterate(vectors: &[&SparseVector], partitions: &mut Vec<usize>) -> Vec<SparseVector> {
-    let centroids = compute_centroids_per_partition(vectors, partitions, 0.);
+    let centroids = compute_centroids_per_partition(vectors, partitions, 1., 1);
     reassign_partitions(vectors, &centroids, partitions);
     centroids
 }
@@ -235,7 +264,39 @@ mod tests {
                 ]),
                 SparseVector::from(vec![(3, 1.)]),
             ],
-            super::compute_centroids_per_partition(&vectors, &mut partitions, 0.)
+            super::compute_centroids_per_partition(&vectors, &mut partitions, 1., 1)
+        );
+
+        // Prune vectors to have max length of 2
+        assert_eq!(
+            vec![
+                SparseVector::from(vec![
+                    (1, 1. / (1f32 + 0.64).sqrt()),
+                    (5, 0.8 / (1f32 + 0.64).sqrt()),
+                ]),
+                SparseVector::from(vec![
+                    (3, 0.8 / (1f32 + 0.64).sqrt()),
+                    (5, 1. / (1f32 + 0.64).sqrt()),
+                ]),
+                SparseVector::from(vec![(3, 1.)]),
+            ],
+            super::compute_centroids_per_partition(&vectors, &mut partitions, 0.1, 2),
+        );
+
+        // Ditto
+        assert_eq!(
+            vec![
+                SparseVector::from(vec![
+                    (1, 1. / (1f32 + 0.64).sqrt()),
+                    (5, 0.8 / (1f32 + 0.64).sqrt()),
+                ]),
+                SparseVector::from(vec![
+                    (3, 0.8 / (1f32 + 0.64).sqrt()),
+                    (5, 1. / (1f32 + 0.64).sqrt()),
+                ]),
+                SparseVector::from(vec![(3, 1.)]),
+            ],
+            super::compute_centroids_per_partition(&vectors, &mut partitions, 0.5, 1),
         );
     }
 

@@ -61,11 +61,16 @@ subcommands:
         long: n_cluster_iters
         takes_value: true
         default_value: "2"
-    - centroid_min_value:
-        help: The minimum value to keep in centroid vectors from clustering; smaller values are pruned.
-        long: centroid_min_value
+    - centroid_preserve_ratio:
+        help: A real number between 0 and 1, which is the ratio of entries with largest absoulte values to preserve. The rest of the entries are pruned.
+        long: centroid_preserve_ratio
         takes_value: true
-        default_value: "0.01"
+        default_value: "0.1"
+    - centroid_min_n_preserve:
+        help: The minimum number of entries to preserve from puning, regardless preserve ratio setting.
+        long: centroid_min_n_preserve
+        takes_value: true
+        default_value: "10"
 - test:
     about: Test an existing CRAFTML model
     args:

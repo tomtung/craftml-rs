@@ -75,8 +75,8 @@ macro_rules! parse_trainer {
 fn train(arg_matches: &clap::ArgMatches) {
     set_num_threads(&arg_matches);
     let trainer = parse_trainer!(arg_matches;
-            n_trees, n_feature_buckets, n_label_buckets,
-            leaf_max_size, k_clusters, cluster_sample_size, n_cluster_iters, centroid_min_value);
+            n_trees, n_feature_buckets, n_label_buckets, leaf_max_size, k_clusters,
+            cluster_sample_size, n_cluster_iters, centroid_preserve_ratio, centroid_min_n_preserve);
 
     let training_path = arg_matches.value_of("training_data").unwrap();
     let training_dataset = DataSet::load_xc_repo_data_file(training_path).unwrap();

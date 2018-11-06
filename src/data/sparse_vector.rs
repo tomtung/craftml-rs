@@ -3,27 +3,25 @@ use std::cmp::{max, min};
 use std::collections::HashMap;
 
 /// Simple sparse vector.
-#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize, Default)]
 pub struct SparseVector {
     /// A list of (index, value) pairs, sorted by index.
     pub entries: Vec<(u16, f32)>,
 }
 
 impl From<Vec<(u16, f32)>> for SparseVector {
-    fn from(sorted_index_value_pairs: Vec<(u16, f32)>) -> Self {
+    fn from(mut index_value_pairs: Vec<(u16, f32)>) -> Self {
+        index_value_pairs.sort_unstable_by_key(|&(i, _)| i);
+        index_value_pairs.shrink_to_fit();
         SparseVector {
-            entries: sorted_index_value_pairs,
+            entries: index_value_pairs,
         }
     }
 }
 
 impl<S: std::hash::BuildHasher> From<HashMap<u16, f32, S>> for SparseVector {
     fn from(index_to_value: HashMap<u16, f32, S>) -> Self {
-        let mut index_value_pairs: Vec<_> = index_to_value.into_iter().collect();
-        index_value_pairs.sort_unstable_by_key(|&(i, _)| i);
-        SparseVector {
-            entries: index_value_pairs,
-        }
+        SparseVector::from(index_to_value.into_iter().collect::<Vec<_>>())
     }
 }
 
@@ -63,19 +61,6 @@ impl SparseVector {
                 *entry = (i, v / length);
             }
         }
-    }
-
-    /// Remove entries with values smaller than the given threshold.
-    ///
-    ///     # use craftml::data::SparseVector;
-    ///     let mut v = SparseVector::from(
-    ///         vec![(1, 0.0001), (5, 0.001), (50, 0.01), (100, 0.1)]);
-    ///     v.prune(0.01);
-    ///     assert_eq!(vec![(50, 0.01), (100, 0.1)], v.entries);
-    ///
-    pub fn prune(&mut self, epsilon: f32) {
-        self.entries.retain(|&(_, v)| v >= epsilon);
-        self.entries.shrink_to_fit();
     }
 
     /// Compute the dot product with another sparse vector.
@@ -133,39 +118,5 @@ impl SparseVector {
         }
 
         sum
-    }
-
-    /// Sum over a collection of sparse vectors.
-    ///
-    ///     # use craftml::data::SparseVector;
-    ///     let sparse_vectors = vec![
-    ///         SparseVector::from(vec![(2, 2.), (4, 4.)]),
-    ///         SparseVector::from(vec![(1, 1.), (3, 3.)]),
-    ///         SparseVector::from(vec![(3, 5.), (7, 9.)]),
-    ///         SparseVector::from(vec![(4, 6.), (8, 10.)]),
-    ///     ];
-    ///     assert_eq!(
-    ///         SparseVector::from(vec![
-    ///             (1, 1.),
-    ///             (2, 2.),
-    ///             (3, 3. + 5.),
-    ///             (4, 4. + 6.),
-    ///             (7, 9.),
-    ///             (8, 10.),
-    ///         ]),
-    ///         SparseVector::sum(sparse_vectors.iter())
-    ///     );
-    pub fn sum<'a, T>(vectors: T) -> SparseVector
-    where
-        T: Iterator<Item = &'a SparseVector>,
-    {
-        let mut index_to_value = HashMap::new();
-        for vec in vectors {
-            for &(index, value) in &vec.entries {
-                let ref_v = index_to_value.entry(index).or_insert(0.);
-                *ref_v += value;
-            }
-        }
-        SparseVector::from(index_to_value)
     }
 }

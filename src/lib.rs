@@ -25,6 +25,8 @@ extern crate bincode;
 
 extern crate rayon;
 
+extern crate order_stat;
+
 /// Data representations and processing.
 pub mod data;
 

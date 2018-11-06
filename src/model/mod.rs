@@ -74,7 +74,8 @@ pub struct CraftmlTrainer {
     pub k_clusters: u32,
     pub cluster_sample_size: usize,
     pub n_cluster_iters: u32,
-    pub centroid_min_value: f32,
+    pub centroid_preserve_ratio: f32,
+    pub centroid_min_n_preserve: usize,
 }
 
 impl Default for CraftmlTrainer {
@@ -87,7 +88,8 @@ impl Default for CraftmlTrainer {
             k_clusters: 10,
             cluster_sample_size: 20000,
             n_cluster_iters: 2,
-            centroid_min_value: 0.01,
+            centroid_preserve_ratio: 0.1,
+            centroid_min_n_preserve: 5,
         }
     }
 }
@@ -101,7 +103,8 @@ impl CraftmlTrainer {
         assert!(self.k_clusters > 0);
         assert!(self.cluster_sample_size > 0);
         assert!(self.n_cluster_iters > 0);
-        assert!(self.centroid_min_value >= 0.);
+        assert!(self.centroid_preserve_ratio >= 0. && self.centroid_preserve_ratio <= 1.);
+        assert!(self.centroid_min_n_preserve > 0);
 
         info!("Training CRAFTML model with parameters {:?}", self);
         let sender = draw_async_progress_bar(self.n_trees as u64);
@@ -118,7 +121,8 @@ impl CraftmlTrainer {
                     self.k_clusters,
                     self.cluster_sample_size,
                     self.n_cluster_iters,
-                    self.centroid_min_value,
+                    self.centroid_preserve_ratio,
+                    self.centroid_min_n_preserve,
                 );
                 let tree = tree_trainer.train(dataset);
                 sender.send(1).unwrap();
@@ -182,7 +186,8 @@ struct TreeTrainer {
     k_clusters: u32,
     cluster_sample_size: usize,
     n_cluster_iters: u32,
-    centroid_min_value: f32,
+    centroid_preserve_ratio: f32,
+    centroid_min_n_preserve: usize,
 }
 
 impl TreeTrainer {
@@ -193,7 +198,8 @@ impl TreeTrainer {
         k_clusters: u32,
         cluster_sample_size: usize,
         n_cluster_iters: u32,
-        centroid_min_value: f32,
+        centroid_preserve_ratio: f32,
+        centroid_min_n_preserve: usize,
     ) -> TreeTrainer {
         let mut rng = thread_rng();
         let feature_projector = HashingTrickProjector {
@@ -213,7 +219,8 @@ impl TreeTrainer {
             k_clusters,
             cluster_sample_size,
             n_cluster_iters,
-            centroid_min_value,
+            centroid_preserve_ratio,
+            centroid_min_n_preserve,
         }
     }
 
@@ -317,7 +324,8 @@ impl TreeTrainer {
         skmeans::compute_centroids_per_partition(
             feature_vectors,
             &partitions,
-            self.centroid_min_value,
+            self.centroid_preserve_ratio,
+            self.centroid_min_n_preserve,
         )
     }
 
