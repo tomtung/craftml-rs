@@ -1,6 +1,6 @@
 extern crate std;
 
-use super::data::SparseVector;
+use data::SparseVector;
 use order_stat::kth_by;
 use rand::distributions::WeightedIndex;
 use rand::prelude::*;
