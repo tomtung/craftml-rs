@@ -126,6 +126,87 @@ impl DataSet {
     }
 }
 
+pub struct DataSplits {
+    index_lists: Vec<Vec<usize>>,
+}
+
+impl DataSplits {
+    /// Parse a line from a data split file, which are a list of space separated indices.
+    fn parse_xc_repo_data_split_line(line: &str) -> Result<Vec<usize>> {
+        line.split_whitespace()
+            .map(|s| {
+                s.parse::<usize>()
+                    .map_err(|_| Error::from(ErrorKind::InvalidData))
+            }).collect()
+    }
+
+    pub fn parse_xc_repo_data_split_file(path: &str) -> Result<Self> {
+        info!("Loading data splits from {}", path);
+        let start_t = time::precise_time_s();
+
+        let mut index_lists = Vec::<Vec<usize>>::new();
+        for line in BufReader::new(File::open(path)?).lines() {
+            let indices = Self::parse_xc_repo_data_split_line(&line?)?;
+            assert!(!indices.is_empty());
+            if index_lists.is_empty() {
+                index_lists.resize(indices.len(), Vec::new());
+            } else if indices.len() != index_lists.len() {
+                Err(ErrorKind::InvalidData)?;
+            }
+
+            for (i, index) in indices.into_iter().enumerate() {
+                if index == 0 {
+                    Err(ErrorKind::InvalidData)?;
+                }
+                index_lists[i].push(index - 1);
+            }
+        }
+
+        info!(
+            "Loaded data splits from {}; it took {:.2}s",
+            path,
+            time::precise_time_s() - start_t
+        );
+        Ok(Self { index_lists })
+    }
+
+    pub fn num_splits(&self) -> usize {
+        self.index_lists.len()
+    }
+
+    fn create_dataset_split(dataset: &DataSet, indices: &[usize]) -> DataSet {
+        let features_per_example: Vec<_> = indices
+            .iter()
+            .map(|&i| dataset.features_per_example[i].clone())
+            .collect();
+        let labels_per_example: Vec<_> = indices
+            .iter()
+            .map(|&i| dataset.labels_per_example[i].clone())
+            .collect();
+        DataSet {
+            n_examples: indices.len() as u32,
+            n_features: dataset.n_features,
+            n_labels: dataset.n_labels,
+            features_per_example,
+            labels_per_example,
+        }
+    }
+
+    pub fn split_dataset(&self, dataset: &DataSet, split_index: usize) -> (DataSet, DataSet) {
+        let indices = &self.index_lists[split_index];
+        let other_indices: Vec<_> = {
+            let index_set: HashSet<_> = indices.iter().cloned().collect();
+            (0..dataset.n_examples as usize)
+                .filter(|i| !index_set.contains(i))
+                .collect()
+        };
+        (
+            Self::create_dataset_split(dataset, indices),
+            Self::create_dataset_split(dataset, &other_indices),
+        )
+    }
+}
+
 #[cfg(test)]
 mod tests {
     #[test]
@@ -143,5 +224,13 @@ mod tests {
                 "label1,label2 feature1:1 feature2:2 feature3:3"
             ).unwrap()
         );
+    }
+
+    #[test]
+    fn test_parse_xc_repo_data_split_line() {
+        assert_eq!(
+            vec![1, 2, 3, 2, 1],
+            super::DataSplits::parse_xc_repo_data_split_line("1 2 3 2 1").unwrap()
+        )
     }
 }

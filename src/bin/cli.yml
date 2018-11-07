@@ -9,18 +9,24 @@ subcommands:
         help: Path to training dataset file (in the format of the Extreme Classification Repository)
         index: 1
         required: true
+    - cv_splits_path:
+        help: Path to the k-fold cross validation splits file, with k space-separated columns of indices (starting from 1) for training splits.
+        long: cv_splits_path
+        takes_value: true
+        value_name: PATH
+        conflicts_with:
+            - test_data
+            - model_path
     - test_data:
         help: Path to test dataset file used to calculate metrics if provided (in the format of the Extreme Classification Repository)
         long: test_data
         takes_value: true
         value_name: PATH
-        required_unless: model_path
     - model_path:
         help: Path to which the trained model will be saved if provided
         long: model_path
         takes_value: true
         value_name: PATH
-        required_unless: test_data
     - n_threads:
         help: Number of worker threads. If 0, the number is selected automatically.
         long: n_threads

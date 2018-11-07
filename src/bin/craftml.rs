@@ -8,7 +8,7 @@ extern crate simple_logger;
 extern crate clap;
 extern crate rayon;
 
-use craftml::data::DataSet;
+use craftml::data::{DataSet, DataSplits};
 use craftml::metrics::precision_at_k;
 use craftml::model::{CraftmlModel, CraftmlTrainer};
 use craftml::util::draw_async_progress_bar;
@@ -16,7 +16,10 @@ use rayon::prelude::*;
 use std::fs::File;
 use std::io::{BufReader, BufWriter, Write};
 
-fn predict_all(model: &CraftmlModel, test_dataset: &DataSet) -> Vec<Vec<(String, f32)>> {
+fn predict_all(
+    model: &CraftmlModel,
+    test_dataset: &DataSet,
+) -> (Vec<Vec<(String, f32)>>, Vec<f32>) {
     info!(
         "Calculating predictions for {} test examples",
         test_dataset.features_per_example.len()
@@ -45,7 +48,7 @@ fn predict_all(model: &CraftmlModel, test_dataset: &DataSet) -> Vec<Vec<(String,
         precisions[4] * 100.,
     );
 
-    predictions
+    (predictions, precisions)
 }
 
 fn set_num_threads(arg_matches: &clap::ArgMatches) {
@@ -58,6 +61,33 @@ fn set_num_threads(arg_matches: &clap::ArgMatches) {
         .num_threads(n_threads)
         .build_global()
         .unwrap();
+}
+
+fn cross_validate(dataset: &DataSet, data_splits: &DataSplits, trainer: &CraftmlTrainer) {
+    let mut precisions = Vec::<f32>::new();
+    for i in 0..data_splits.num_splits() {
+        info!("Running cross validation with split #{}", i + 1);
+        let (training_dataset, test_dataset) = data_splits.split_dataset(&dataset, i);
+        let model = trainer.train(&training_dataset);
+        let (_, split_precisions) = predict_all(&model, &test_dataset);
+        if i == 0 {
+            precisions = split_precisions;
+        } else {
+            assert!(!precisions.is_empty());
+            for (j, precision) in split_precisions.into_iter().enumerate() {
+                precisions[j] += precision;
+            }
+        }
+    }
+    for precision in &mut precisions {
+        *precision /= data_splits.num_splits() as f32;
+    }
+    info!(
+        "Average precision@[1, 3, 5] = [{:.2}, {:.2}, {:.2}]",
+        precisions[0] * 100.,
+        precisions[2] * 100.,
+        precisions[4] * 100.,
+    );
 }
 
 macro_rules! parse_trainer {
@@ -79,30 +109,41 @@ fn train(arg_matches: &clap::ArgMatches) {
             cluster_sample_size, n_cluster_iters, centroid_preserve_ratio, centroid_min_n_preserve);
 
     let training_path = arg_matches.value_of("training_data").unwrap();
-    let training_dataset = DataSet::load_xc_repo_data_file(training_path).unwrap();
+    let training_dataset =
+        DataSet::load_xc_repo_data_file(training_path).expect("Failed to load training data");
 
-    let model = trainer.train(&training_dataset);
+    if let Some(cv_splits_path) = arg_matches.value_of("cv_splits_path") {
+        let data_splits = DataSplits::parse_xc_repo_data_split_file(cv_splits_path)
+            .expect("Failed to load splits");
+        cross_validate(&training_dataset, &data_splits, &trainer);
+    } else {
+        let model = trainer.train(&training_dataset);
 
-    if let Some(model_path) = arg_matches.value_of("model_path") {
-        let model_file = File::create(model_path).unwrap();
-        model.save(BufWriter::new(model_file)).unwrap();
-    }
+        if let Some(model_path) = arg_matches.value_of("model_path") {
+            let model_file = File::create(model_path).expect("Failed to create model file");
+            model
+                .save(BufWriter::new(model_file))
+                .expect("Failed to save model");
+        }
 
-    if let Some(test_path) = arg_matches.value_of("test_data") {
-        let test_dataset = DataSet::load_xc_repo_data_file(test_path).unwrap();
-        predict_all(&model, &test_dataset);
+        if let Some(test_path) = arg_matches.value_of("test_data") {
+            let test_dataset =
+                DataSet::load_xc_repo_data_file(test_path).expect("Failed to load test data");
+            predict_all(&model, &test_dataset);
+        }
     }
 }
 
 fn test(arg_matches: &clap::ArgMatches) {
     set_num_threads(&arg_matches);
     let model_path = arg_matches.value_of("model_path").unwrap();
-    let model_file = File::open(model_path).unwrap();
-    let model = CraftmlModel::load(BufReader::new(model_file)).unwrap();
+    let model_file = File::open(model_path).expect("Failed to open model file");
+    let model = CraftmlModel::load(BufReader::new(model_file)).expect("Failed to load model");
 
     let test_path = arg_matches.value_of("test_data").unwrap();
-    let test_dataset = DataSet::load_xc_repo_data_file(test_path).unwrap();
-    let predictions = predict_all(&model, &test_dataset);
+    let test_dataset =
+        DataSet::load_xc_repo_data_file(test_path).expect("Failed to load test data");
+    let (predictions, _) = predict_all(&model, &test_dataset);
 
     if let Some(out_path) = arg_matches.value_of("out_path") {
         let k_top = arg_matches
@@ -110,7 +151,8 @@ fn test(arg_matches: &clap::ArgMatches) {
             .and_then(|s| s.parse::<usize>().ok())
             .expect("Failed to parse k_top");
 
-        let mut writer = BufWriter::new(File::create(out_path).unwrap());
+        let mut writer =
+            BufWriter::new(File::create(out_path).expect("Failed to create output file"));
         for prediction in &predictions {
             for (i, &(ref label, score)) in prediction.iter().take(k_top).enumerate() {
                 if i > 0 {
