@@ -118,7 +118,7 @@ fn test(arg_matches: &clap::ArgMatches) {
                 }
                 write!(&mut writer, "{} {:.3}", label, score);
             }
-            writeln!(&mut writer, "");
+            writeln!(&mut writer);
         }
     }
 }
