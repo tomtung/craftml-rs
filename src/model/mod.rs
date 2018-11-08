@@ -6,8 +6,10 @@ mod train;
 
 use bincode;
 use data::{Feature, Label, SparseVector};
-use fasthash::murmur3::hash32_with_seed;
-use std::collections::{HashMap, HashSet};
+use fasthash::murmur3::Murmur3Hasher_x86_32 as MurmurHasher;
+use fasthash::FastHasher;
+use std::collections::HashMap;
+use std::hash::{Hash, Hasher};
 use std::io;
 use time;
 
@@ -20,7 +22,7 @@ pub struct CraftmlModel {
 }
 
 impl CraftmlModel {
-    pub fn predict(&self, features: &HashMap<Feature, f32>) -> Vec<(Label, f32)> {
+    pub fn predict(&self, features: &[(Feature, f32)]) -> Vec<(Label, f32)> {
         let mut label_score_pairs: Vec<_> = {
             let mut aggregate_map = HashMap::<Label, f32>::new();
 
@@ -73,8 +75,8 @@ struct Tree {
 }
 
 impl Tree {
-    fn predict(&self, features: &HashMap<Feature, f32>) -> &Vec<(Label, f32)> {
-        let feature_vector = self.feature_projector.project_map(features);
+    fn predict(&self, features: &[(Feature, f32)]) -> &Vec<(Label, f32)> {
+        let feature_vector = self.feature_projector.project_features(features);
         self.root.predict(&feature_vector)
     }
 }
@@ -116,27 +118,28 @@ struct HashingTrickProjector {
 }
 
 impl HashingTrickProjector {
+    fn hash(index: &impl Hash, seed: u32) -> u32 {
+        let mut hasher = MurmurHasher::with_seed(seed);
+        index.hash(&mut hasher);
+        hasher.finish() as u32
+    }
+
+    fn hash_entry(&self, index: impl Hash, value: f32) -> (u16, f32) {
+        let hashed_index = Self::hash(&index, self.index_hash_seed) as u16 % self.n_buckets;
+        let sign = Self::hash(&index, self.sign_hash_seed) & 1 == 1;
+        let value = if sign { -value } else { value };
+        (hashed_index, value)
+    }
+
     /// Project sparse features / labels with hashing trick.
-    fn project<'a, T, S: 'a>(&self, index_value_pairs: T) -> SparseVector
-    where
-        T: Iterator<Item = (&'a S, f32)>,
-        S: AsRef<[u8]>,
-    {
+    fn project<'a, S: 'a + Hash>(
+        &self,
+        index_value_pairs: impl Iterator<Item = (&'a S, f32)>,
+    ) -> SparseVector {
         let mut index_to_value = HashMap::<u16, f32>::new();
-        for (feature, value) in index_value_pairs {
-            let ref_v = {
-                let index =
-                    hash32_with_seed(&feature, self.index_hash_seed) as u16 % self.n_buckets;
-                index_to_value.entry(index).or_insert(0.)
-            };
-            *ref_v += {
-                let sign = hash32_with_seed(&feature, self.sign_hash_seed) & 1 == 1;
-                if sign {
-                    -value
-                } else {
-                    value
-                }
-            };
+        for (index, value) in index_value_pairs {
+            let (index, value) = self.hash_entry(index, value);
+            *index_to_value.entry(index).or_insert(0.) += value;
         }
 
         let mut sv = SparseVector::from(index_to_value);
@@ -144,11 +147,15 @@ impl HashingTrickProjector {
         sv
     }
 
-    fn project_map(&self, index_to_value: &HashMap<String, f32>) -> SparseVector {
-        self.project(index_to_value.iter().map(|(index, &value)| (index, value)))
+    fn project_features(&self, index_label_pairs: &[(Feature, f32)]) -> SparseVector {
+        self.project(
+            index_label_pairs
+                .iter()
+                .map(|(index, value)| (index, *value)),
+        )
     }
 
-    fn project_set(&self, indices: &HashSet<String>) -> SparseVector {
+    fn project_labels(&self, indices: &[Label]) -> SparseVector {
         self.project(indices.iter().map(|index| (index, 1.)))
     }
 }

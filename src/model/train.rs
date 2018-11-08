@@ -2,7 +2,7 @@ use super::{CraftmlModel, HashingTrickProjector, Tree, TreeNode};
 use data::{DataSet, Label, SparseVector};
 use rand::prelude::*;
 use rayon::prelude::*;
-use std::collections::{HashMap, HashSet};
+use std::collections::HashMap;
 use util::draw_async_progress_bar;
 
 #[derive(Debug)]
@@ -106,19 +106,23 @@ impl TreeTrainer {
     fn train(&self, dataset: &DataSet) -> Tree {
         let root = {
             let feature_vectors = dataset
-                .features_per_example
+                .examples
                 .iter()
-                .map(|features| self.feature_projector.project_map(features))
+                .map(|e| self.feature_projector.project_features(&e.features))
                 .collect::<Vec<_>>();
             let label_vectors = dataset
-                .labels_per_example
+                .examples
                 .iter()
-                .map(|labels| self.label_projector.project_set(labels))
+                .map(|e| self.label_projector.project_labels(&e.labels))
                 .collect::<Vec<_>>();
             self.train_subtree(
                 &feature_vectors.iter().collect::<Vec<_>>(),
                 &label_vectors.iter().collect::<Vec<_>>(),
-                &dataset.labels_per_example.iter().collect::<Vec<_>>(),
+                &dataset
+                    .examples
+                    .iter()
+                    .map(|e| &e.labels)
+                    .collect::<Vec<_>>(),
             )
         };
 
@@ -132,7 +136,7 @@ impl TreeTrainer {
         &self,
         feature_vectors: &[&SparseVector],
         label_vectors: &[&SparseVector],
-        label_sets: &[&HashSet<Label>],
+        label_sets: &[&Vec<Label>],
     ) -> TreeNode {
         assert!(!feature_vectors.is_empty());
         assert_eq!(feature_vectors.len(), label_vectors.len());
@@ -237,14 +241,14 @@ impl TreeTrainer {
         }
     }
 
-    fn build_leaf(label_sets: &[&HashSet<Label>]) -> TreeNode {
+    fn build_leaf(label_sets: &[&Vec<Label>]) -> TreeNode {
         TreeNode::LeafNode {
             label_score_pairs: aggregate_label_sets(label_sets),
         }
     }
 }
 
-fn aggregate_label_sets(label_sets: &[&HashSet<Label>]) -> Vec<(Label, f32)> {
+fn aggregate_label_sets(label_sets: &[&Vec<Label>]) -> Vec<(Label, f32)> {
     let mut label_to_score = HashMap::new();
 
     for &label_set in label_sets {
@@ -261,18 +265,13 @@ fn aggregate_label_sets(label_sets: &[&HashSet<Label>]) -> Vec<(Label, f32)> {
 mod tests {
     #[test]
     fn test_aggregate_label_sets() {
+        use std::collections::HashMap;
+        use std::iter::FromIterator;
         assert_eq!(
-            hashmap!{
-                "1".to_owned() => 1.,
-                "2".to_owned() => 2. / 3.,
-                "3".to_owned() => 1. / 3.,
-            },
-            super::aggregate_label_sets(&[
-                &hashset!{"1".to_owned(), "2".to_owned(), "3".to_owned()},
-                &hashset!{"1".to_owned(), "2".to_owned()},
-                &hashset!{"1".to_owned()},
-            ]).into_iter()
-            .collect(),
+            hashmap![1 => 1., 2 => 2. / 3., 3 => 1. / 3.],
+            HashMap::from_iter(
+                super::aggregate_label_sets(&[&vec![1, 2, 3], &vec![1, 2], &vec![1],]).into_iter()
+            ),
         );
     }
 }

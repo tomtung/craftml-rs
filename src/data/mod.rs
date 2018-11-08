@@ -1,5 +1,5 @@
 use pbr::ProgressBar;
-use std::collections::{HashMap, HashSet};
+use std::collections::HashSet;
 use std::fs::File;
 use std::io::prelude::*;
 use std::io::{BufReader, Error, ErrorKind, Result};
@@ -8,16 +8,20 @@ use time;
 mod sparse_vector;
 pub use self::sparse_vector::SparseVector;
 
-pub type Feature = String;
+pub type Feature = u32;
 
-pub type Label = String;
+pub type Label = u32;
+
+#[derive(Clone, Debug, PartialEq)]
+pub struct Example {
+    pub features: Vec<(Feature, f32)>,
+    pub labels: Vec<Label>,
+}
 
 pub struct DataSet {
-    pub n_examples: u32,
     pub n_features: u32,
     pub n_labels: u32,
-    pub features_per_example: Vec<HashMap<Feature, f32>>,
-    pub labels_per_example: Vec<HashSet<Label>>,
+    pub examples: Vec<Example>,
 }
 
 impl DataSet {
@@ -25,40 +29,42 @@ impl DataSet {
     ///
     /// The line should be in the following format:
     /// label1,label2,...labelk ft1:ft1_val ft2:ft2_val ft3:ft3_val .. ftd:ftd_val
-    ///
-    /// Here we treat feature and label indices as strings for flexibility.
-    fn parse_xc_repo_data_line(line: &str) -> Result<(HashMap<Feature, f32>, HashSet<Label>)> {
+    fn parse_xc_repo_data_line(line: &str) -> Result<Example> {
         let mut token_iter = line.split(' ');
-        let labels = token_iter
-            .next()
-            .unwrap()
-            .split(',')
-            .filter_map(|s| {
-                if s.is_empty() {
-                    None
-                } else {
-                    Some(s.to_string())
-                }
-            }).collect();
 
-        let mut feature_to_value = HashMap::new();
+        let mut labels = Vec::new();
+        let labels_str = token_iter.next().ok_or(ErrorKind::InvalidData)?;
+        for label_str in labels_str.split(',') {
+            if !label_str.is_empty() {
+                labels.push(
+                    label_str
+                        .parse::<Label>()
+                        .ok()
+                        .ok_or(ErrorKind::InvalidData)?,
+                );
+            }
+        }
+        labels.shrink_to_fit();
+
+        let mut features = Vec::new();
         for feature_value_pair_str in token_iter {
             let mut feature_value_pair_iter = feature_value_pair_str.split(':');
             let feature = feature_value_pair_iter
                 .next()
-                .ok_or(ErrorKind::InvalidData)?
-                .to_string();
+                .and_then(|s| s.parse::<Feature>().ok())
+                .ok_or(ErrorKind::InvalidData)?;
             let value = feature_value_pair_iter
                 .next()
                 .and_then(|s| s.parse::<f32>().ok())
                 .ok_or(ErrorKind::InvalidData)?;
             if feature_value_pair_iter.next().is_some() {
-                return Err(Error::from(ErrorKind::InvalidData));
+                Err(ErrorKind::InvalidData)?;
             }
-            feature_to_value.insert(feature, value);
+            features.push((feature, value));
         }
+        features.shrink_to_fit();
 
-        Ok((feature_to_value, labels))
+        Ok(Example { features, labels })
     }
 
     /// Load a data file from the Extreme Classification Repository
@@ -90,23 +96,21 @@ impl DataSet {
             (n_examples, n_features, n_labels)
         };
 
-        let mut features_per_example = Vec::new();
-        let mut labels_per_example = Vec::new();
         let mut pb = ProgressBar::on(::std::io::stderr(), n_examples.into());
+        let mut examples = Vec::with_capacity(n_examples as usize);
         for line in lines {
-            let (feature_map, label_set) = Self::parse_xc_repo_data_line(&line?)?;
-            features_per_example.push(feature_map);
-            labels_per_example.push(label_set);
+            examples.push(Self::parse_xc_repo_data_line(&line?)?);
             pb.inc();
         }
-        assert_eq!(features_per_example.len(), labels_per_example.len());
-        if n_examples as usize != features_per_example.len() {
+        examples.shrink_to_fit();
+
+        if n_examples as usize != examples.len() {
             return Err(Error::new(
                 ErrorKind::InvalidData,
                 format!(
                     "Expected {} examples, only read {} lines",
                     n_examples,
-                    features_per_example.len()
+                    examples.len()
                 ),
             ));
         }
@@ -117,11 +121,9 @@ impl DataSet {
             time::precise_time_s() - start_t
         );
         Ok(Self {
-            n_examples,
             n_features,
             n_labels,
-            features_per_example,
-            labels_per_example,
+            examples,
         })
     }
 }
@@ -175,20 +177,14 @@ impl DataSplits {
     }
 
     fn create_dataset_split(dataset: &DataSet, indices: &[usize]) -> DataSet {
-        let features_per_example: Vec<_> = indices
+        let examples = indices
             .iter()
-            .map(|&i| dataset.features_per_example[i].clone())
-            .collect();
-        let labels_per_example: Vec<_> = indices
-            .iter()
-            .map(|&i| dataset.labels_per_example[i].clone())
+            .map(|&i| dataset.examples[i].clone())
             .collect();
         DataSet {
-            n_examples: indices.len() as u32,
             n_features: dataset.n_features,
             n_labels: dataset.n_labels,
-            features_per_example,
-            labels_per_example,
+            examples,
         }
     }
 
@@ -196,7 +192,7 @@ impl DataSplits {
         let indices = &self.index_lists[split_index];
         let other_indices: Vec<_> = {
             let index_set: HashSet<_> = indices.iter().cloned().collect();
-            (0..dataset.n_examples as usize)
+            (0..dataset.examples.len())
                 .filter(|i| !index_set.contains(i))
                 .collect()
         };
@@ -212,17 +208,11 @@ mod tests {
     #[test]
     fn test_parse_xc_repo_data_line() {
         assert_eq!(
-            (
-                hashmap! {
-                    "feature1".to_owned()=> 1.,
-                    "feature2".to_owned()=> 2.,
-                    "feature3".to_owned()=> 3.,
-                },
-                hashset!{"label1".to_owned(), "label2".to_owned()}
-            ),
-            super::DataSet::parse_xc_repo_data_line(
-                "label1,label2 feature1:1 feature2:2 feature3:3"
-            ).unwrap()
+            super::Example {
+                features: vec![(21, 1.), (23, 2.), (24, 3.)],
+                labels: vec![11, 12],
+            },
+            super::DataSet::parse_xc_repo_data_line("11,12 21:1 23:2 24:3").unwrap()
         );
     }
 

@@ -8,7 +8,7 @@ extern crate simple_logger;
 extern crate clap;
 extern crate rayon;
 
-use craftml::data::{DataSet, DataSplits};
+use craftml::data::{DataSet, DataSplits, Label};
 use craftml::metrics::precision_at_k;
 use craftml::model::{CraftmlModel, CraftmlTrainer};
 use craftml::util::draw_async_progress_bar;
@@ -16,32 +16,37 @@ use rayon::prelude::*;
 use std::fs::File;
 use std::io::{BufReader, BufWriter, Write};
 
-fn predict_all(
-    model: &CraftmlModel,
-    test_dataset: &DataSet,
-) -> (Vec<Vec<(String, f32)>>, Vec<f32>) {
+fn predict_all(model: &CraftmlModel, test_dataset: &DataSet) -> (Vec<Vec<(Label, f32)>>, Vec<f32>) {
     info!(
         "Calculating predictions for {} test examples",
-        test_dataset.features_per_example.len()
+        test_dataset.examples.len()
     );
     let start_t = time::precise_time_s();
 
     let mut predictions = Vec::new();
-    let sender = draw_async_progress_bar(test_dataset.features_per_example.len() as u64);
+    let sender = draw_async_progress_bar(test_dataset.examples.len() as u64);
     test_dataset
-        .features_per_example
+        .examples
         .par_iter()
-        .map_with(sender, |sender, feature_map| {
-            let prediction = model.predict(feature_map);
+        .map_with(sender, |sender, e| {
+            let prediction = model.predict(&e.features);
             sender.send(1).unwrap();
             prediction
         }).collect_into_vec(&mut predictions);
 
     let end_t = time::precise_time_s();
-    let precisions = precision_at_k(5, &test_dataset.labels_per_example, &predictions);
+    let precisions = precision_at_k(
+        5,
+        &test_dataset
+            .examples
+            .iter()
+            .map(|e| &e.labels)
+            .collect::<Vec<_>>(),
+        &predictions,
+    );
     info!(
         "Prediction on {} examples took {:.2}s; precision@[1, 3, 5] = [{:.2}, {:.2}, {:.2}]",
-        test_dataset.n_examples,
+        test_dataset.examples.len(),
         end_t - start_t,
         precisions[0] * 100.,
         precisions[2] * 100.,
