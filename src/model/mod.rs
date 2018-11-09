@@ -4,14 +4,19 @@ mod skmeans;
 /// Model training.
 mod train;
 
+/// Model testing & evaluation.
+pub mod eval;
+
 use bincode;
-use data::{Feature, Label, SparseVector};
+use data::{DataSet, Feature, Label, SparseVector};
 use fasthash::murmur3::Murmur3Hasher_x86_32 as MurmurHasher;
 use fasthash::FastHasher;
+use rayon::prelude::*;
 use std::collections::HashMap;
 use std::hash::{Hash, Hasher};
 use std::io;
 use time;
+use util::draw_async_progress_bar;
 
 /// Trainer for CraftML models.
 pub use self::train::CraftmlTrainer;
@@ -38,6 +43,35 @@ impl CraftmlModel {
         label_score_pairs
             .sort_unstable_by(|(_, score1), (_, score2)| score2.partial_cmp(score1).unwrap());
         label_score_pairs
+    }
+
+    pub fn predict_all(&self, dataset: &DataSet) -> Vec<Vec<(Label, f32)>> {
+        info!(
+            "Calculating predictions for {} examples",
+            dataset.examples.len()
+        );
+        let start_t = time::precise_time_s();
+
+        let mut predictions = Vec::new();
+        let (sender, handle) = draw_async_progress_bar(dataset.examples.len() as u64);
+        dataset
+            .examples
+            .par_iter()
+            .map_with(sender, |sender, e| {
+                let prediction = self.predict(&e.features);
+                sender.send(1).unwrap();
+                prediction
+            }).collect_into_vec(&mut predictions);
+
+        let end_t = time::precise_time_s();
+        handle.join().unwrap();
+        info!(
+            "Prediction on {} examples took {:.2}s",
+            dataset.examples.len(),
+            end_t - start_t,
+        );
+
+        predictions
     }
 
     pub fn save<W: io::Write>(&self, writer: W) -> io::Result<()> {

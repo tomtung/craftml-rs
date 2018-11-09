@@ -47,7 +47,7 @@ impl CraftmlTrainer {
         assert!(self.centroid_min_n_preserve > 0);
 
         info!("Training CRAFTML model with parameters {:?}", self);
-        let sender = draw_async_progress_bar(self.n_trees as u64);
+        let (sender, handle) = draw_async_progress_bar(self.n_trees as u64);
         let start_t = time::precise_time_s();
 
         let mut trees = Vec::new();
@@ -59,6 +59,7 @@ impl CraftmlTrainer {
                 tree
             }).collect_into_vec(&mut trees);
 
+        handle.join().unwrap();
         info!(
             "CRAFTML model training complete; it took {:.2}s",
             time::precise_time_s() - start_t

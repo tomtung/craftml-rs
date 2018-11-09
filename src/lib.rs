@@ -33,7 +33,4 @@ pub mod data;
 /// Model implementation.
 pub mod model;
 
-/// Metrics calculation
-pub mod metrics;
-
 pub mod util;

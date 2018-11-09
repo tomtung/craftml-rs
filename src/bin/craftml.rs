@@ -1,60 +1,12 @@
 extern crate craftml;
-extern crate time;
-#[macro_use]
-extern crate log;
-extern crate pbr;
-extern crate simple_logger;
 #[macro_use]
 extern crate clap;
 extern crate rayon;
 
-use craftml::data::{DataSet, DataSplits, Label};
-use craftml::metrics::precision_at_k;
-use craftml::model::{CraftmlModel, CraftmlTrainer};
-use craftml::util::draw_async_progress_bar;
-use rayon::prelude::*;
+use craftml::data::{DataSet, DataSplits};
+use craftml::model::{eval, CraftmlModel, CraftmlTrainer};
 use std::fs::File;
 use std::io::{BufReader, BufWriter, Write};
-
-fn predict_all(model: &CraftmlModel, test_dataset: &DataSet) -> (Vec<Vec<(Label, f32)>>, Vec<f32>) {
-    info!(
-        "Calculating predictions for {} test examples",
-        test_dataset.examples.len()
-    );
-    let start_t = time::precise_time_s();
-
-    let mut predictions = Vec::new();
-    let sender = draw_async_progress_bar(test_dataset.examples.len() as u64);
-    test_dataset
-        .examples
-        .par_iter()
-        .map_with(sender, |sender, e| {
-            let prediction = model.predict(&e.features);
-            sender.send(1).unwrap();
-            prediction
-        }).collect_into_vec(&mut predictions);
-
-    let end_t = time::precise_time_s();
-    let precisions = precision_at_k(
-        5,
-        &test_dataset
-            .examples
-            .iter()
-            .map(|e| &e.labels)
-            .collect::<Vec<_>>(),
-        &predictions,
-    );
-    info!(
-        "Prediction on {} examples took {:.2}s; precision@[1, 3, 5] = [{:.2}, {:.2}, {:.2}]",
-        test_dataset.examples.len(),
-        end_t - start_t,
-        precisions[0] * 100.,
-        precisions[2] * 100.,
-        precisions[4] * 100.,
-    );
-
-    (predictions, precisions)
-}
 
 fn set_num_threads(arg_matches: &clap::ArgMatches) {
     let n_threads = arg_matches
@@ -66,33 +18,6 @@ fn set_num_threads(arg_matches: &clap::ArgMatches) {
         .num_threads(n_threads)
         .build_global()
         .unwrap();
-}
-
-fn cross_validate(dataset: &DataSet, data_splits: &DataSplits, trainer: &CraftmlTrainer) {
-    let mut precisions = Vec::<f32>::new();
-    for i in 0..data_splits.num_splits() {
-        info!("Running cross validation with split #{}", i + 1);
-        let (training_dataset, test_dataset) = data_splits.split_dataset(&dataset, i);
-        let model = trainer.train(&training_dataset);
-        let (_, split_precisions) = predict_all(&model, &test_dataset);
-        if i == 0 {
-            precisions = split_precisions;
-        } else {
-            assert!(!precisions.is_empty());
-            for (j, precision) in split_precisions.into_iter().enumerate() {
-                precisions[j] += precision;
-            }
-        }
-    }
-    for precision in &mut precisions {
-        *precision /= data_splits.num_splits() as f32;
-    }
-    info!(
-        "Average precision@[1, 3, 5] = [{:.2}, {:.2}, {:.2}]",
-        precisions[0] * 100.,
-        precisions[2] * 100.,
-        precisions[4] * 100.,
-    );
 }
 
 macro_rules! parse_trainer {
@@ -120,7 +45,7 @@ fn train(arg_matches: &clap::ArgMatches) {
     if let Some(cv_splits_path) = arg_matches.value_of("cv_splits_path") {
         let data_splits = DataSplits::parse_xc_repo_data_split_file(cv_splits_path)
             .expect("Failed to load splits");
-        cross_validate(&training_dataset, &data_splits, &trainer);
+        eval::cross_validate(&training_dataset, &data_splits, &trainer);
     } else {
         let model = trainer.train(&training_dataset);
 
@@ -134,7 +59,7 @@ fn train(arg_matches: &clap::ArgMatches) {
         if let Some(test_path) = arg_matches.value_of("test_data") {
             let test_dataset =
                 DataSet::load_xc_repo_data_file(test_path).expect("Failed to load test data");
-            predict_all(&model, &test_dataset);
+            eval::test_all(&model, &test_dataset);
         }
     }
 }
@@ -148,7 +73,7 @@ fn test(arg_matches: &clap::ArgMatches) {
     let test_path = arg_matches.value_of("test_data").unwrap();
     let test_dataset =
         DataSet::load_xc_repo_data_file(test_path).expect("Failed to load test data");
-    let (predictions, _) = predict_all(&model, &test_dataset);
+    let (predictions, _) = eval::test_all(&model, &test_dataset);
 
     if let Some(out_path) = arg_matches.value_of("out_path") {
         let k_top = arg_matches
