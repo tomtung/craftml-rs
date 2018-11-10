@@ -7,13 +7,13 @@ use std::iter::FromIterator;
 /// Calculate precision@k metrics.
 fn precision_at_k(
     max_k: usize,
-    true_labels: &[&Vec<Label>],
+    dataset: &DataSet,
     predicted_labels: &[Vec<(Label, f32)>],
 ) -> Vec<f32> {
-    assert_eq!(true_labels.len(), predicted_labels.len());
+    assert_eq!(dataset.examples.len(), predicted_labels.len());
     let mut ps = vec![0.; max_k];
-    for (labels, predictions) in izip!(true_labels, predicted_labels) {
-        let labels = HashSet::<Label>::from_iter(labels.iter().cloned());
+    for (example, predictions) in izip!(&dataset.examples, predicted_labels) {
+        let labels = HashSet::<Label>::from_iter(example.labels.iter().cloned());
         let mut n_correct = 0;
         for k in 0..min(max_k, predictions.len()) {
             if labels.contains(&predictions[k].0) {
@@ -23,13 +23,9 @@ fn precision_at_k(
         }
     }
     for p in &mut ps {
-        *p /= true_labels.len() as f32;
+        *p /= predicted_labels.len() as f32;
     }
     ps
-}
-
-fn true_labels(dataset: &DataSet) -> Vec<&Vec<Label>> {
-    dataset.examples.iter().map(|e| &e.labels).collect()
 }
 
 pub fn test_all(
@@ -37,7 +33,7 @@ pub fn test_all(
     test_dataset: &DataSet,
 ) -> (Vec<Vec<(Label, f32)>>, Vec<f32>) {
     let predicted_labels = model.predict_all(test_dataset);
-    let precisions = precision_at_k(5, &true_labels(test_dataset), &predicted_labels);
+    let precisions = precision_at_k(5, &test_dataset, &predicted_labels);
     info!(
         "Precision@[1, 3, 5] = [{:.2}, {:.2}, {:.2}]",
         precisions[0] * 100.,
