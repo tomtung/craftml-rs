@@ -3,19 +3,34 @@ A Rust implementation of CRAFTML, an Efficient Clustering-based Random Forest fo
 
 ## Performance
 
-This implementation has been tested on datasets from the [Extreme Classification Repository](http://manikvarma.org/downloads/XC/XMLRepository.html). Precisions at 1, 3, and 5 are calculated for models trained with default hyper-parameters (e.g. to train the model for EURLex-4K we simply run `craftml train eurlex_train.txt --test_data eurlex_test.txt` without changing any settings).
+This implementation has been tested on datasets from the [Extreme Classification Repository](http://manikvarma.org/downloads/XC/XMLRepository.html). Each data set comes either with a single data file and separate files for train / test splits, or with two separate train / test data files.
+
+A data file starts with a header line with three space-separated integers: total number of examples, number of features, and number of labels. Following the header line, there is one line per each example, starting with comma-separated labels, followed by space-separated feature:value pairs:
+```
+label1,label2,...labelk ft1:ft1_val ft2:ft2_val ft3:ft3_val .. ftd:ftd_val
+```
+
+A split file is a M×K integer matrix, with one line per row, and columns separated by spaces. The integers are example indices (1-indexed) in the corresponding data file, and each column corresponds to a separate split.
+
+Precisions at 1, 3, and 5 are calculated for models trained with default hyper-parameters, e.g.
+- `craftml train Mediamill/data.txt --cv_splits_path Mediamill/train_split.txt` for Mediamill, which has a single data file and separate train / test split files;
+- `craftml train EURLex-4K/train.txt --test_data EURLex-4K/test.txt` for EURLex-4K, which has separate train / test data files.
 
 | Dataset | P@1 | P@3 | P@5 |
 | --- | --- | --- | --- |
-| Mediamill | 86.67 | 71.53 | 57.59 |
-| Bibtex | 62.39 | 37.93 | 27.41 |
-| Delicious | 69.02 | 63.37 | 58.66 |
-| EURLex-4K | 79.1 | 65.24 | 53.97 |
-| Wiki10-31K | 85.1 | 73.65 | 63.99 |
+| Mediamill | 85.64 | 69.97 | 56.36 |
+| Bibtex | 61.38 | 37.26 | 27.34 |
+| Delicious | 68.04 | 62.22 | 57.61 |
+| EURLex-4K | 79.34 | 66.12 | 55.17 |
+| Wiki10-31K | 83.42 | 72.71 | 63.60 |
+| WikiLSHTC-325K | 51.58 | 32.29 | 23.36 |
+| Delicious-200K | 47.31 | 40.84 | 37.70 |
+| Amazon-670K | 38.28 | 34.13 | 31.33 |
+| AmazonCat-13K | 92.98 | 77.52 | 61.25 |
 
 These numbers are generally consistent with those reported in the original paper.
 
-_TODO(?): My PC doesn't have enough memory to train on the larger datasets._
+Note that if there isn't enough memory to train on a large data set, the `--test_trees_singly` flag can be set to only train & test one tree at a time, and discard each tree when it's been tested. This allows one to obtain test results without being able to fit the entire model in memory. One can also tune the `--centroid_preserve_ratio` option to trade off between model size and accuracy.
 
 ## Build
 The project can be easily built with [Cargo](https://doc.rust-lang.org/cargo/getting-started/installation.html):
@@ -27,33 +42,54 @@ The compiled binary file will be available at `target/release/craftml`.
 
 ## Usage
 ```
-$ target/release/craftml train --help
+$ craftml train --help
+
 craftml-train
 Train a new CRAFTML model
 
 USAGE:
-    craftml train [OPTIONS] <training_data> --model_path <PATH> --test_data <PATH>
+    craftml train [FLAGS] [OPTIONS] <training_data>
 
 FLAGS:
-    -h, --help       Prints help information
-    -V, --version    Prints version information
+    -h, --help                 Prints help information
+        --test_trees_singly    Test forest tree by tree, freeing each before training the next to reduce memory usage.
+                               Model cannot be saved.
+    -V, --version              Prints version information
 
 OPTIONS:
+        --centroid_min_n_preserve <centroid_min_n_preserve>
+            The minimum number of entries to preserve from puning, regardless preserve ratio setting. [default: 10]
+
+        --centroid_preserve_ratio <centroid_preserve_ratio>
+            A real number between 0 and 1, which is the ratio of entries with largest absoulte values to preserve. The
+            rest of the entries are pruned. [default: 0.1]
         --cluster_sample_size <cluster_sample_size>
             Number of examples drawn for clustering on a branching node [default: 20000]
 
-        --k_clusters <k_clusters>                      Number of clusters on a branching node [default: 10]
-        --leaf_max_size <leaf_max_size>                Maximum number of distinct examples on a leaf node [default: 10]
-        --model_path <PATH>                            Path to which the trained model will be saved if provided
+        --cv_splits_path <PATH>
+            Path to the k-fold cross validation splits file, with k space-separated columns of indices (starting from 1)
+            for training splits.
+        --k_clusters <k_clusters>                              Number of clusters on a branching node [default: 10]
+        --leaf_max_size <leaf_max_size>
+            Maximum number of distinct examples on a leaf node [default: 10]
+
+        --model_path <PATH>                                    Path to which the trained model will be saved if provided
         --n_cluster_iters <n_cluster_iters>
             Number of clustering iterations to run on each branching node [default: 2]
 
-        --n_feature_buckets <n_feature_buckets>        Number of buckets into which features are hashed [default: 10000]
-        --n_label_buckets <n_label_buckets>            Number of buckets into which labels are hashed [default: 10000]
+        --n_feature_buckets <n_feature_buckets>
+            Number of buckets into which features are hashed [default: 10000]
+
+        --n_label_buckets <n_label_buckets>
+            Number of buckets into which labels are hashed [default: 10000]
+
         --n_threads <n_threads>
             Number of worker threads. If 0, the number is selected automatically. [default: 0]
 
-        --n_trees <n_trees>                            Number of trees in the random forest [default: 50]
+        --n_trees <n_trees>                                    Number of trees in the random forest [default: 50]
+        --out_path <PATH>
+            Path to the which predictions will be written, if provided
+
         --test_data <PATH>
             Path to test dataset file used to calculate metrics if provided (in the format of the Extreme Classification
             Repository)
@@ -63,7 +99,8 @@ ARGS:
 ```
 
 ```
-$ target/release/craftml test --help
+$ craftml test --help                                                                                                               23:39:20
+
 craftml-test
 Test an existing CRAFTML model
 
@@ -83,8 +120,6 @@ ARGS:
     <model_path>    Path to the trained model
     <test_data>     Path to test dataset file (in the format of the Extreme Classification Repository)
 ```
-
-The program accepts dataset files in the [Extreme Classification Repository](http://manikvarma.org/downloads/XC/XMLRepository.html) format as inputs.
 
 ## References
 
