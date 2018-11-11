@@ -31,6 +31,15 @@ subcommands:
         conflicts_with:
             - model_path
             - cv_splits_path
+    - out_path:
+          help: Path to the which predictions will be written, if provided
+          long: out_path
+          takes_value: true
+          value_name: PATH
+          requires:
+            - test_data
+          conflicts_with:
+            - cv_splits_path
     - model_path:
         help: Path to which the trained model will be saved if provided
         long: model_path

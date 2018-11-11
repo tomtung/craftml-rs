@@ -3,7 +3,7 @@ extern crate craftml;
 extern crate clap;
 extern crate rayon;
 
-use craftml::data::{DataSet, DataSplits};
+use craftml::data::{DataSet, DataSplits, Label};
 use craftml::model::{eval, CraftmlModel, CraftmlTrainer};
 use std::fs::File;
 use std::io::{BufReader, BufWriter, Write};
@@ -32,6 +32,27 @@ macro_rules! parse_trainer {
     }};
 }
 
+fn maybe_write_predictions_file(arg_matches: &clap::ArgMatches, predictions: &[Vec<(Label, f32)>]) {
+    if let Some(out_path) = arg_matches.value_of("out_path") {
+        let k_top = arg_matches
+            .value_of("k_top")
+            .and_then(|s| s.parse::<usize>().ok())
+            .expect("Failed to parse k_top");
+
+        let mut writer =
+            BufWriter::new(File::create(out_path).expect("Failed to create output file"));
+        for prediction in predictions {
+            for (i, &(ref label, score)) in prediction.iter().take(k_top).enumerate() {
+                if i > 0 {
+                    write!(&mut writer, "\t");
+                }
+                write!(&mut writer, "{} {:.3}", label, score);
+            }
+            writeln!(&mut writer);
+        }
+    }
+}
+
 fn train(arg_matches: &clap::ArgMatches) {
     set_num_threads(&arg_matches);
     let trainer = parse_trainer!(arg_matches;
@@ -51,7 +72,8 @@ fn train(arg_matches: &clap::ArgMatches) {
         let test_dataset =
             DataSet::load_xc_repo_data_file(test_path).expect("Failed to load test data");
 
-        eval::test_trees_singly(&training_dataset, &test_dataset, &trainer);
+        let (predictions, _) = eval::test_trees_singly(&training_dataset, &test_dataset, &trainer);
+        maybe_write_predictions_file(arg_matches, &predictions);
     } else {
         let model = trainer.train(&training_dataset);
 
@@ -65,7 +87,8 @@ fn train(arg_matches: &clap::ArgMatches) {
         if let Some(test_path) = arg_matches.value_of("test_data") {
             let test_dataset =
                 DataSet::load_xc_repo_data_file(test_path).expect("Failed to load test data");
-            eval::test_all(&model, &test_dataset);
+            let (predictions, _) = eval::test_all(&model, &test_dataset);
+            maybe_write_predictions_file(arg_matches, &predictions);
         }
     }
 }
@@ -80,25 +103,7 @@ fn test(arg_matches: &clap::ArgMatches) {
     let test_dataset =
         DataSet::load_xc_repo_data_file(test_path).expect("Failed to load test data");
     let (predictions, _) = eval::test_all(&model, &test_dataset);
-
-    if let Some(out_path) = arg_matches.value_of("out_path") {
-        let k_top = arg_matches
-            .value_of("k_top")
-            .and_then(|s| s.parse::<usize>().ok())
-            .expect("Failed to parse k_top");
-
-        let mut writer =
-            BufWriter::new(File::create(out_path).expect("Failed to create output file"));
-        for prediction in &predictions {
-            for (i, &(ref label, score)) in prediction.iter().take(k_top).enumerate() {
-                if i > 0 {
-                    write!(&mut writer, "\t");
-                }
-                write!(&mut writer, "{} {:.3}", label, score);
-            }
-            writeln!(&mut writer);
-        }
-    }
+    maybe_write_predictions_file(arg_matches, &predictions);
 }
 
 fn main() {
