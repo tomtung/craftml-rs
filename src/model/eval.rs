@@ -1,7 +1,8 @@
 use super::{CraftmlModel, CraftmlTrainer};
 use data::{DataSet, DataSplits, Label};
+use rayon::prelude::*;
 use std::cmp::min;
-use std::collections::HashSet;
+use std::collections::{HashMap, HashSet};
 use std::iter::FromIterator;
 
 /// Calculate precision@k metrics.
@@ -73,4 +74,46 @@ pub fn cross_validate(
         precisions[4] * 100.,
     );
     precisions
+}
+
+pub fn test_trees_singly(
+    train_dataset: &DataSet,
+    test_dataset: &DataSet,
+    trainer: &CraftmlTrainer,
+) -> (Vec<Vec<(Label, f32)>>, Vec<f32>) {
+    let mut aggregate_predictions = vec![HashMap::<Label, f32>::new(); test_dataset.examples.len()];
+
+    for i in 1..=trainer.n_trees {
+        info!("Training tree #{}/{}", i, trainer.n_trees);
+        let mut tree_trainer = trainer.clone();
+        tree_trainer.n_trees = 1;
+        let model = tree_trainer.train(train_dataset);
+        let tree_predictions = model.predict_all(test_dataset);
+
+        (&mut aggregate_predictions)
+            .into_par_iter()
+            .zip((&tree_predictions).into_par_iter())
+            .for_each(|(aggregate_prediction, tree_prediction)| {
+                super::update_aggregate_with_tree_prediction(
+                    aggregate_prediction,
+                    tree_prediction,
+                    trainer.n_trees,
+                );
+            });
+    }
+
+    let aggregate_predictions: Vec<_> = aggregate_predictions
+        .into_par_iter()
+        .map(super::aggregate_prediction_to_vec)
+        .collect();
+    let precisions = precision_at_k(5, test_dataset, &aggregate_predictions);
+
+    info!(
+        "Aggregate precision@[1, 3, 5] = [{:.2}, {:.2}, {:.2}]",
+        precisions[0] * 100.,
+        precisions[2] * 100.,
+        precisions[4] * 100.,
+    );
+
+    (aggregate_predictions, precisions)
 }

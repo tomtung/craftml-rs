@@ -26,23 +26,35 @@ pub struct CraftmlModel {
     trees: Vec<Tree>,
 }
 
+fn update_aggregate_with_tree_prediction(
+    aggregate_prediction: &mut HashMap<Label, f32>,
+    tree_prediction: &[(Label, f32)],
+    n_trees: usize,
+) {
+    for &(ref label, score) in tree_prediction {
+        let ref_score = aggregate_prediction.entry(label.to_owned()).or_insert(0.);
+        *ref_score += score / n_trees as f32;
+    }
+}
+
+fn aggregate_prediction_to_vec(aggregate_prediction: HashMap<Label, f32>) -> Vec<(Label, f32)> {
+    let mut aggregate_prediction: Vec<_> = aggregate_prediction.into_iter().collect();
+    aggregate_prediction
+        .sort_unstable_by(|(_, score1), (_, score2)| score2.partial_cmp(score1).unwrap());
+    aggregate_prediction
+}
+
 impl CraftmlModel {
     pub fn predict(&self, features: &[(Feature, f32)]) -> Vec<(Label, f32)> {
-        let mut label_score_pairs: Vec<_> = {
-            let mut aggregate_map = HashMap::<Label, f32>::new();
-
-            for tree_prediction in self.trees.iter().map(|tree| tree.predict(features)) {
-                for &(ref label, score) in tree_prediction {
-                    let ref_score = aggregate_map.entry(label.to_owned()).or_insert(0.);
-                    *ref_score += score / self.trees.len() as f32;
-                }
-            }
-
-            aggregate_map.into_iter().collect()
-        };
-        label_score_pairs
-            .sort_unstable_by(|(_, score1), (_, score2)| score2.partial_cmp(score1).unwrap());
-        label_score_pairs
+        let mut aggregate_prediction = HashMap::<Label, f32>::new();
+        for tree_prediction in self.trees.iter().map(|tree| tree.predict(features)) {
+            update_aggregate_with_tree_prediction(
+                &mut aggregate_prediction,
+                &tree_prediction,
+                self.trees.len(),
+            );
+        }
+        aggregate_prediction_to_vec(aggregate_prediction)
     }
 
     pub fn predict_all(&self, dataset: &DataSet) -> Vec<Vec<(Label, f32)>> {

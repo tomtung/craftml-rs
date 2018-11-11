@@ -46,6 +46,12 @@ fn train(arg_matches: &clap::ArgMatches) {
         let data_splits = DataSplits::parse_xc_repo_data_split_file(cv_splits_path)
             .expect("Failed to load splits");
         eval::cross_validate(&training_dataset, &data_splits, &trainer);
+    } else if arg_matches.is_present("test_trees_singly") {
+        let test_path = arg_matches.value_of("test_data").unwrap();
+        let test_dataset =
+            DataSet::load_xc_repo_data_file(test_path).expect("Failed to load test data");
+
+        eval::test_trees_singly(&training_dataset, &test_dataset, &trainer);
     } else {
         let model = trainer.train(&training_dataset);
 

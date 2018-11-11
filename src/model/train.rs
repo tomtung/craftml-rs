@@ -5,7 +5,7 @@ use rayon::prelude::*;
 use std::collections::HashMap;
 use util::draw_async_progress_bar;
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct CraftmlTrainer {
     pub n_trees: usize,
     pub n_feature_buckets: u16,
