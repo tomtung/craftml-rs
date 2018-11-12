@@ -15,12 +15,26 @@ fn pick_centroids(vectors: &[&SparseVector], k: u32) -> (Vec<SparseVector>, Vec<
 
     let mut centroids: Vec<SparseVector> = Vec::with_capacity(k as usize);
     let mut partitions = vec![0usize; vectors.len()];
-    let mut distances = vec![1f32; vectors.len()];
+    let mut cos_sims = vec![0f32; vectors.len()];
 
     while centroids.len() < k as usize {
         let c = {
             // Randomly pick the centroid using the weighted probability distribution
-            let weights: Vec<_> = distances.iter().map(|d| d.powi(2)).collect();
+            let weights: Vec<_> = cos_sims
+                .iter()
+                .map(|&s| {
+                    // - If it's very close to a centroid already, just don't pick it;
+                    // - Otherwise, pick with probability proportional to a distance that respects
+                    //   triangle inequality. For details, see:
+                    //   Endo Y., Miyamoto S. (2015) Spherical k-Means++ Clustering. In: Modeling
+                    //   Decisions for Artificial Intelligence. MDAI 2015. Lecture Notes in Computer
+                    //   Science, vol 9321. Springer, Cham. https://doi.org/10.1007/978-3-319-23240-9_9
+                    if s > 1. - 1e-4 {
+                        0.
+                    } else {
+                        1.5 - s
+                    }
+                }).collect();
             if let Ok(distribution) = WeightedIndex::new(weights) {
                 vectors[distribution.sample(&mut thread_rng())].clone()
             } else {
@@ -29,12 +43,12 @@ fn pick_centroids(vectors: &[&SparseVector], k: u32) -> (Vec<SparseVector>, Vec<
             }
         };
 
-        // Update distance to nearest centroid
-        for (v, curr_d, curr_p) in izip!(vectors, &mut distances, &mut partitions) {
-            let d = 1. - v.dot(&c);
-            if d < *curr_d {
-                assert!(d > -1e-4);
-                *curr_d = d.max(0.);
+        // Update cosine similarities with nearest centroid
+        for (v, curr_s, curr_p) in izip!(vectors, &mut cos_sims, &mut partitions) {
+            let s = v.dot(&c);
+            if s > *curr_s {
+                assert!(s < 1. + 1e-4);
+                *curr_s = s.min(1.);
                 *curr_p = centroids.len();
             }
         }

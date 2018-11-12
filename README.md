@@ -18,15 +18,15 @@ Precisions at 1, 3, and 5 are calculated for models trained with default hyper-p
 
 | Dataset | P@1 | P@3 | P@5 |
 | --- | --- | --- | --- |
-| Mediamill | 85.64 | 69.97 | 56.36 |
-| Bibtex | 61.38 | 37.26 | 27.34 |
-| Delicious | 68.04 | 62.22 | 57.61 |
-| EURLex-4K | 79.34 | 66.12 | 55.17 |
-| Wiki10-31K | 83.42 | 72.71 | 63.60 |
-| WikiLSHTC-325K | 51.58 | 32.29 | 23.36 |
-| Delicious-200K | 47.31 | 40.84 | 37.70 |
-| Amazon-670K | 38.28 | 34.13 | 31.33 |
-| AmazonCat-13K | 92.98 | 77.52 | 61.25 |
+| Mediamill | 85.51 | 69.94 | 56.39 |
+| Bibtex | 61.47 | 37.20 | 27.32 |
+| Delicious | 67.78 | 62.15 | 57.63 |
+| EURLex-4K | 79.52 | 66.42 | 55.25 |
+| Wiki10-31K | 83.57 | 72.69 | 63.65 |
+| WikiLSHTC-325K | 51.79 | 32.41 | 23.43 |
+| Delicious-200K | 47.34 | 40.85 | 37.67 |
+| Amazon-670K | 38.40 | 34.21 | 31.41 |
+| AmazonCat-13K | 92.88 | 77.48 | 61.32 |
 
 These numbers are generally consistent with those reported in the original paper.
 
