@@ -10,7 +10,7 @@ A data file starts with a header line with three space-separated integers: total
 label1,label2,...labelk ft1:ft1_val ft2:ft2_val ft3:ft3_val .. ftd:ftd_val
 ```
 
-A split file is a M×K integer matrix, with one line per row, and columns separated by spaces. The integers are example indices (1-indexed) in the corresponding data file, and each column corresponds to a separate split.
+A split file is a integer matrix, with one line per row, and columns separated by spaces. The integers are example indices (1-indexed) in the corresponding data file, and each column corresponds to a separate split.
 
 Precisions at 1, 3, and 5 are calculated for models trained with default hyper-parameters, e.g.
 - `craftml train Mediamill/data.txt --cv_splits_path Mediamill/train_split.txt` for Mediamill, which has a single data file and separate train / test split files;
@@ -99,7 +99,7 @@ ARGS:
 ```
 
 ```
-$ craftml test --help                                                                                                               23:39:20
+$ craftml test --help
 
 craftml-test
 Test an existing CRAFTML model
