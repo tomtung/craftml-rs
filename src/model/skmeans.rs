@@ -100,7 +100,7 @@ pub fn compute_centroids_per_partition(
             kth_by(&mut index_value_pairs, n_preserve - 1, |l, r| {
                 let (_, lv) = l;
                 let (_, rv) = r;
-                rv.partial_cmp(lv).unwrap()
+                rv.abs().partial_cmp(&lv.abs()).unwrap()
             });
             index_value_pairs.truncate(n_preserve);
         }
